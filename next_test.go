@@ -6,8 +6,44 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 	"gorm.io/gorm/utils/tests"
 )
+
+func TestSetKeyAndFields(t *testing.T) {
+	type User struct {
+		ID        uint64 `gorm:"primaryKey;n:snowflake;column:id"`
+		DisplayID string `gorm:"column:display_id;n:display_id"`
+		Name      string `gorm:"column:name"`
+	}
+
+	snowflake := func(hasDefaultValue, zero bool) (interface{}, error) {
+		if !zero {
+			return nil, SkipField
+		}
+		return 750350266425, nil
+	}
+	displayID := func(hasDefaultValue, zero bool) (interface{}, error) {
+		if !zero {
+			return nil, SkipField
+		}
+		return "20220101A01", nil
+	}
+
+	db, err := gorm.Open(tests.DummyDialector{}, nil)
+	assert.NoError(t, err)
+
+	plugin := NewPlugin()
+	plugin.SetKey("n")
+	plugin.SetFields(func(sch *schema.Schema) []*schema.Field { return []*schema.Field{sch.PrioritizedPrimaryField} })
+	plugin.Register("snowflake", snowflake)
+	plugin.Register("display_id", displayID)
+	assert.NoError(t, db.Use(plugin))
+
+	user := User{Name: "test"}
+	assert.NoError(t, db.Create(&user).Error)
+	assert.Equal(t, User{ID: 750350266425, Name: "test"}, user)
+}
 
 type User struct {
 	ID        uint64 `gorm:"primaryKey;next:snowflake;column:id"`
@@ -71,6 +107,60 @@ func TestCreateNextStruct(t *testing.T) {
 		assert.NoError(t, err)
 
 		plugin := NewPlugin()
+		for tag, fn := range tt.funcs {
+			plugin.Register(tag, fn)
+		}
+		assert.NoError(t, db.Use(plugin))
+
+		assert.NoError(t, db.Create(&tt.user).Error)
+		assert.Equal(t, tt.created, tt.user)
+	}
+
+	prioritizedPrimaryFieldCases := []struct {
+		funcs   map[string]Func
+		user    User
+		created User
+	}{
+		{
+			funcs: map[string]Func{
+				"snowflake": snowflake,
+			},
+			user:    User{Name: "test"},
+			created: User{ID: 750350266425, Name: "test"},
+		},
+		{
+			funcs: map[string]Func{
+				"display_id": displayID,
+			},
+			user:    User{Name: "test"},
+			created: User{DisplayID: "", Name: "test"},
+		},
+		{
+			funcs: map[string]Func{
+				"snowflake":  snowflake,
+				"display_id": displayID,
+			},
+			user:    User{Name: "test"},
+			created: User{ID: 750350266425, DisplayID: "", Name: "test"},
+		},
+		{
+			funcs: map[string]Func{
+				"snowflake":  snowflake,
+				"display_id": displayID,
+			},
+			user:    User{ID: 1, DisplayID: "", Name: "test"},
+			created: User{ID: 1, DisplayID: "", Name: "test"},
+		},
+	}
+
+	for _, tt := range prioritizedPrimaryFieldCases {
+		db, err := gorm.Open(tests.DummyDialector{}, nil)
+		assert.NoError(t, err)
+
+		plugin := NewPlugin()
+		plugin.SetFields(func(sch *schema.Schema) []*schema.Field {
+			return []*schema.Field{sch.PrioritizedPrimaryField}
+		})
 		for tag, fn := range tt.funcs {
 			plugin.Register(tag, fn)
 		}
