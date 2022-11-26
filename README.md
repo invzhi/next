@@ -6,9 +6,9 @@
 
 ## Usage
 
-Next delivers capabilities by GORM plugin. It could assign a default value for fields.
+Next delivers a GORM plugin to set next value for fields.
 
 The most common usage is generating a distributed unique ID
 like [Twitter's Snowflake](https://blog.twitter.com/2010/announcing-snowflake).
 
-See also [example](./example_test.go).
+See also [example](https://pkg.go.dev/github.com/invzhi/next#example-package).

@@ -1,12 +1,16 @@
+// Package next provides a gorm plugin to set next value for fields.
 package next
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
+
+	"github.com/invzhi/next/internal"
 )
 
 const (
@@ -14,9 +18,11 @@ const (
 )
 
 var (
+	// SkipField is used as a return error in Func to indicate that field is to be skipped.
 	SkipField = errors.New("skip this field")
 )
 
+// Func is the function type to generate the next value.
 type Func func(hasDefaultValue, zero bool) (interface{}, error)
 
 type Plugin struct {
@@ -27,7 +33,7 @@ type Plugin struct {
 
 var _ gorm.Plugin = &Plugin{}
 
-// NewPlugin constructs a gorm.Plugin for next. It supports to generate a next value automatically.
+// NewPlugin constructs a gorm.Plugin for next.
 func NewPlugin() *Plugin {
 	return &Plugin{
 		key:    defaultKey,
@@ -37,19 +43,25 @@ func NewPlugin() *Plugin {
 }
 
 // SetKey sets the key to search in struct tag with gorm key.
-// Please avoid built-in gorm tag in https://gorm.io/docs/models.html#Fields-Tags.
+// Please avoid gorm built-in tag in https://gorm.io/docs/models.html#Fields-Tags.
 // Default value is "next".
 func (p *Plugin) SetKey(key string) {
 	p.key = strings.ToUpper(key)
 }
 
-// SetFields sets the function to get []*schema.Field from *schema.Schema.
-// Default function will return all fields in schema.
+// SetFields could customize the scope of fields need to generate a next value.
+// Default scope is all fields in schema.
+//
+// For example, only generate next value for prioritized primary field:
+//
+//  plugin.SetFields(func(sch *schema.Schema) []*schema.Field {
+//      return []*schema.Field{sch.PrioritizedPrimaryField}
+//  })
 func (p *Plugin) SetFields(fn func(*schema.Schema) []*schema.Field) {
 	p.fields = fn
 }
 
-// Register registers the function to generate a next value.
+// Register registers the function to generate a next value for field with tag.
 func (p *Plugin) Register(tag string, fn Func) {
 	p.funcs[tag] = fn
 }
@@ -73,15 +85,15 @@ func (p *Plugin) Initialize(db *gorm.DB) error {
 				if reflect.Indirect(rv).Kind() != reflect.Struct {
 					return
 				}
-				p.trySetNextValue(db.Statement.Schema, rv)
+				p.trySetNextValue(db.Statement.Context, db.Statement.Schema, rv)
 			}
 		case reflect.Struct:
-			p.trySetNextValue(db.Statement.Schema, db.Statement.ReflectValue)
+			p.trySetNextValue(db.Statement.Context, db.Statement.Schema, db.Statement.ReflectValue)
 		}
 	})
 }
 
-func (p *Plugin) trySetNextValue(schema *schema.Schema, rv reflect.Value) {
+func (p *Plugin) trySetNextValue(ctx context.Context, schema *schema.Schema, rv reflect.Value) {
 	for _, field := range p.fields(schema) {
 		key, ok := field.TagSettings[p.key]
 		if !ok {
@@ -93,12 +105,14 @@ func (p *Plugin) trySetNextValue(schema *schema.Schema, rv reflect.Value) {
 			continue
 		}
 
-		_, zero := field.ValueOf(rv)
+		valueOfField := internal.ValueOf(field.ValueOf)
+		_, zero := valueOfField(ctx, rv)
 		value, err := next(field.HasDefaultValue, zero)
 		if err != nil {
 			continue
 		}
 
-		_ = field.Set(rv, value)
+		setField := internal.Set(field.Set)
+		_ = setField(ctx, rv, value)
 	}
 }

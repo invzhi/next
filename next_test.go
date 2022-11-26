@@ -4,11 +4,40 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/sony/sonyflake"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 	"gorm.io/gorm/utils/tests"
 )
+
+func Example() {
+	sf := sonyflake.NewSonyflake(sonyflake.Settings{
+		MachineID: func() (uint16, error) { return 1024, nil },
+	})
+
+	plugin := NewPlugin()
+	plugin.Register("sonyflake", func(_, zero bool) (interface{}, error) {
+		if !zero {
+			return nil, SkipField
+		}
+		return sf.NextID()
+	})
+
+	db, _ := gorm.Open(tests.DummyDialector{}, &gorm.Config{DryRun: true})
+	_ = db.Use(plugin)
+
+	type User struct {
+		ID   uint64 `gorm:"primaryKey;next:sonyflake;column:id"`
+		Name string `gorm:"column:name"`
+	}
+	user := User{Name: "test"}
+
+	db.Create(&user)
+	fmt.Println(sonyflake.MachineID(user.ID))
+	// Output:
+	// 1024
+}
 
 func TestSetKeyAndFields(t *testing.T) {
 	type User struct {
@@ -30,11 +59,13 @@ func TestSetKeyAndFields(t *testing.T) {
 		return "20220101A01", nil
 	}
 
-	db, err := gorm.Open(tests.DummyDialector{}, nil)
+	db, err := gorm.Open(tests.DummyDialector{}, &gorm.Config{DryRun: true})
+	db.DryRun = true
 	assert.NoError(t, err)
 
 	plugin := NewPlugin()
 	plugin.SetKey("n")
+	// only prioritized primary field will be set.
 	plugin.SetFields(func(sch *schema.Schema) []*schema.Field { return []*schema.Field{sch.PrioritizedPrimaryField} })
 	plugin.Register("snowflake", snowflake)
 	plugin.Register("display_id", displayID)
@@ -103,7 +134,7 @@ func TestCreateNextStruct(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		db, err := gorm.Open(tests.DummyDialector{}, nil)
+		db, err := gorm.Open(tests.DummyDialector{}, &gorm.Config{DryRun: true})
 		assert.NoError(t, err)
 
 		plugin := NewPlugin()
@@ -154,7 +185,7 @@ func TestCreateNextStruct(t *testing.T) {
 	}
 
 	for _, tt := range prioritizedPrimaryFieldCases {
-		db, err := gorm.Open(tests.DummyDialector{}, nil)
+		db, err := gorm.Open(tests.DummyDialector{}, &gorm.Config{DryRun: true})
 		assert.NoError(t, err)
 
 		plugin := NewPlugin()
@@ -194,7 +225,7 @@ func (d *DisplayID) Next(hasDefaultValue, zero bool) (interface{}, error) {
 }
 
 func TestCreateNextSlice(t *testing.T) {
-	db, err := gorm.Open(tests.DummyDialector{}, nil)
+	db, err := gorm.Open(tests.DummyDialector{}, &gorm.Config{DryRun: true})
 	assert.NoError(t, err)
 
 	plugin := NewPlugin()
@@ -216,7 +247,7 @@ func TestCreateNextSlice(t *testing.T) {
 }
 
 func TestCreateNextArray(t *testing.T) {
-	db, err := gorm.Open(tests.DummyDialector{}, nil)
+	db, err := gorm.Open(tests.DummyDialector{}, &gorm.Config{DryRun: true})
 	assert.NoError(t, err)
 
 	plugin := NewPlugin()
