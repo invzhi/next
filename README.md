@@ -2,6 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/invzhi/next.svg)](https://pkg.go.dev/github.com/invzhi/next)
 [![Go Report Card](https://goreportcard.com/badge/github.com/invzhi/next)](https://goreportcard.com/report/github.com/invzhi/next)
+[![codecov](https://codecov.io/gh/invzhi/next/branch/main/graph/badge.svg?token=UMU32URU4J)](https://codecov.io/gh/invzhi/next)
 
 ❄️ Set next value to fields when creating with GORM.
 
