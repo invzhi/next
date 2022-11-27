@@ -1,6 +1,7 @@
 # Package next
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/invzhi/next.svg)](https://pkg.go.dev/github.com/invzhi/next)
+[![Go Report Card](https://goreportcard.com/badge/github.com/invzhi/next)](https://goreportcard.com/report/github.com/invzhi/next)
 
 ❄️ Set next value to fields when creating with GORM.
 
