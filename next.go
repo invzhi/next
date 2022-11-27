@@ -2,7 +2,6 @@
 package next
 
 import (
-	"context"
 	"errors"
 	"reflect"
 	"strings"
@@ -18,9 +17,33 @@ const (
 )
 
 var (
-	// SkipField is used as a return error in Func to indicate that field is to be skipped.
-	SkipField = errors.New("skip this field")
+	// SkipField is used as a return error for Func to indicate that field is to be skipped.
+	SkipField = errors.New("next: skip this field")
 )
+
+// UnregisteredTagError is returned when tag is unregistered.
+// See also [Plugin.Register].
+type UnregisteredTagError struct {
+	Tag string
+}
+
+func (e *UnregisteredTagError) Error() string {
+	return "next: unregistered tag " + e.Tag
+}
+
+// InvokeFuncError is returned if registered [Func] returned an error when generating next value.
+type InvokeFuncError struct {
+	Tag string
+	Err error
+}
+
+func (e *InvokeFuncError) Error() string {
+	return "next: invoke func " + e.Tag + ": " + e.Err.Error()
+}
+
+func (e *InvokeFuncError) Unwrap() error {
+	return e.Err
+}
 
 // Func is the function type to generate the next value.
 type Func func(hasDefaultValue, zero bool) (interface{}, error)
@@ -83,36 +106,42 @@ func (p *Plugin) Initialize(db *gorm.DB) error {
 			for i := 0; i < db.Statement.ReflectValue.Len(); i++ {
 				rv := db.Statement.ReflectValue.Index(i)
 				if reflect.Indirect(rv).Kind() != reflect.Struct {
-					return
+					break
 				}
-				p.trySetNextValue(db.Statement.Context, db.Statement.Schema, rv)
+				p.trySetNextValue(db, rv)
 			}
 		case reflect.Struct:
-			p.trySetNextValue(db.Statement.Context, db.Statement.Schema, db.Statement.ReflectValue)
+			p.trySetNextValue(db, db.Statement.ReflectValue)
 		}
 	})
 }
 
-func (p *Plugin) trySetNextValue(ctx context.Context, schema *schema.Schema, rv reflect.Value) {
-	for _, field := range p.fields(schema) {
-		key, ok := field.TagSettings[p.key]
+func (p *Plugin) trySetNextValue(db *gorm.DB, rv reflect.Value) {
+	for _, field := range p.fields(db.Statement.Schema) {
+		tag, ok := field.TagSettings[p.key]
 		if !ok {
 			continue
 		}
 
-		next, ok := p.funcs[key]
+		next, ok := p.funcs[tag]
 		if !ok {
+			err := &UnregisteredTagError{Tag: tag}
+			_ = db.AddError(err)
 			continue
 		}
 
 		valueOfField := internal.ValueOf(field.ValueOf)
-		_, zero := valueOfField(ctx, rv)
+		_, zero := valueOfField(db.Statement.Context, rv)
 		value, err := next(field.HasDefaultValue, zero)
 		if err != nil {
+			if err != SkipField {
+				err = &InvokeFuncError{Tag: tag, Err: err}
+				_ = db.AddError(err)
+			}
 			continue
 		}
 
 		setField := internal.Set(field.Set)
-		_ = setField(ctx, rv, value)
+		_ = setField(db.Statement.Context, rv, value)
 	}
 }
