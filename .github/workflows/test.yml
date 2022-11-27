@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go-version }}
-      - name: Install gorm
+      - name: Install gorm ${{ matrix.gorm-version }}
         run: go get gorm.io/gorm@${{ matrix.gorm-version }}
       - name: Test
         run: go test -race -coverprofile=coverage.txt -covermode=atomic
