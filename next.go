@@ -77,9 +77,9 @@ func (p *Plugin) SetKey(key string) {
 //
 // For example, only generate next value for prioritized primary field:
 //
-//  plugin.SetFields(func(sch *schema.Schema) []*schema.Field {
-//      return []*schema.Field{sch.PrioritizedPrimaryField}
-//  })
+//	plugin.SetFields(func(sch *schema.Schema) []*schema.Field {
+//	    return []*schema.Field{sch.PrioritizedPrimaryField}
+//	})
 func (p *Plugin) SetFields(fn func(*schema.Schema) []*schema.Field) {
 	p.fields = fn
 }
